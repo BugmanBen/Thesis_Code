@@ -1,0 +1,166 @@
+---
+title: " THESIS:: Aim 1: Tracking Community Composition in Chicago's Cryptic Culex "
+author: "Ben Burgunder"
+date: today
+date-format: "MMM D, YYYY"
+
+editor: source
+
+format:
+  html:
+    title-block-banner: true
+    toc: true
+    toc-depth: 6
+    toc-float: true
+    code-overflow: wrap
+    code-fold: true
+    theme: flatly
+
+fig-width: 8
+fig-height: 7
+---
+
+### Loading Packages
+
+```{r}
+#| label: load_packages and set theme
+#| message: false
+#| warning: false
+
+if (!require(pacman)) install.packages("pacman")
+pacman::p_load(ggplot2, lmtest, ggpubr, aod, forcats, flextable, lme4, magrittr,ggdark, update = FALSE)
+
+theme_set(theme_bw())
+
+```
+
+### Reading in Data
+
+```{r}
+#| label: Read_Data
+#| message: false
+#| warning: false
+
+RPDF<-read.csv(here::here("Thesis_Projects", "CSVs","Attempttograph.csv"))
+SDFull<-read.csv(here::here("Thesis_Projects", "CSVs", "SampleDepthAnalysis2.csv"))
+
+attach(RPDF)
+```
+
+### Wrangling DFs
+
+```{r}
+#| label: Wrangling Dataframes
+#| message: false
+#| warning: false
+
+my_y_title <- expression(paste("Proportion ",italic("Cx. pipiens ")))
+RPDF$Month_f = factor(RPDF$Month, levels=c('Jul','Aug'))
+RPDF$Category_f=factor(RPDF$Category, levels=c('Lower','Equal', 'Higher'))
+```
+
+### Graph Full Facets
+
+```{r}
+#| label: Graphing
+#| message: false
+#| warning: false
+
+my_y_title <- expression(paste(italic("Cx. pipiens "), "by Site Category (%)" ))
+
+
+FullFac_Aim1<-ggplot(data=RPDF,aes(Category_f,PropPip))+
+  facet_grid(Year ~ Month_f)+
+  geom_boxplot(data=RPDF, aes(y=PropPip,x=Category_f, fill=Category_f),color="black",outlier.shape=NA, alpha=0.2)+
+  geom_jitter(data=RPDF, width= 0.3, aes(y=PropPip, 
+                                              x=Category_f, fill=Category_f), color="black",shape=21, size=3)+
+  theme_bw()+
+  # scale_x_discrete(limits = c("Equal","Higher","Lower"))+
+  scale_fill_manual(values = c("#25CED1","#FF7F50", "#F8C537"))+
+  scale_y_continuous(limits=c(40,101))+
+  theme(legend.position ='none', axis.text=element_text(size=15),
+        axis.title=element_text(size=22), strip.text.x = element_text(size = 15), strip.text.y = element_text(size = 15))+
+  ylab(my_y_title) + xlab("Observed vs. Predicted Human WNv Cases")
+
+FullFac_Aim1
+
+ggsave(here::here("Thesis_Projects", "Figures", "PostRU_FullFacet.png"),  width = 11, height = 9, dpi = 300)
+
+```
+
+
+```{r}
+SDFull$MonthO = factor(SDFull$Month, levels=c('Jul','Aug'))
+SDFull$Category_f=factor(SDFull$Category, levels=c('Lower','Equal', 'Higher'))
+
+
+SDAnalysisGraph<-ggplot(data=SDFull,aes(Category_f, Sample.Depth))+
+  facet_grid(Year ~ MonthO)+
+  geom_boxplot(data=SDFull, aes(y=Sample.Depth,x=Category_f, fill=Category_f),outlier.shape=NA, alpha=0.2)+
+  geom_jitter(data=SDFull, width= 0.3, aes(y=Sample.Depth, x=Category_f, fill=Category_f), shape=21, size=3)+ theme_bw()+
+  #scale_x_discrete(limits = c("Equal","Higher","Lower"))+
+  scale_fill_manual(values = c("#25CED1","#FF7F50", "#F8C537"))+
+  #scale_y_continuous(limits=c(40,100))+
+  theme(legend.position ='none', axis.text=element_text(size=15),
+        axis.title=element_text(size=22), strip.text.x = element_text(size = 15), strip.text.y = element_text(size = 15))+
+  ylab("Samples Identified" ) + xlab("Predicted vs. Observed Human WNv Cases")
+
+SDAnalysisGraph
+
+ggsave(here::here("Thesis_Projects", "Figures", "SampleDepthAnalysisgrph.png"),  width = 11, height = 9, dpi = 300)
+
+
+```
+
+#### Model Reduction Testing
+
+```{r}
+#| label: Clustered Binomial suggested by RLS
+#| message: false
+#| warning: false
+
+#Reshaping data
+data_long <- with(RPDF[,c(1:6)],data.frame(
+  Month=rep(Month,Num.Rest + Num.Pip),
+  Category=rep(Category, Num.Rest + Num.Pip),
+  Year=rep(Year, Num.Rest + Num.Pip),
+  ID=rep(rep(c("Num.Rest","Num.Pip"),nrow(RPDF)),c(rbind(Num.Rest,Num.Pip))),
+  Hex=rep(Hex, Num.Rest + Num.Pip)))
+
+data_long$ID <- as.character(data_long$ID)
+data_long$ID <- ifelse(data_long$ID == "Num.Pip", 1, 0)
+
+#sanity check for reshape - num rows data_long should equal total ID'd mosquitoes
+dim(data_long)
+sum(Num.Rest+Num.Pip)
+
+
+#definition crossed random effects:a given factor (hex) appears in more than one level of the upper level factor (year).
+fullmodel2 <- glmer(ID ~ Category * Month + (1|Year) + (1|Hex), #specifying crossed (vs. nested) random effects
+                    data = data_long, family = binomial)
+summary(fullmodel2)
+#CALL IT A CLUSTERED BINOMIAL WHERE WE SPECIFIED RANDOM EFFECTS OF YEAR AND SITE
+
+red1Mod <-glmer(ID ~ Category + Month + (1|Year) + (1|Hex), data = data_long, family = binomial)
+summary(red1Mod)
+
+lrtest(red1Mod, fullmodel2) #interaction not sig
+
+red2Mod <-glmer(ID ~ Month + (1|Year) + (1|Hex), data = data_long, family = binomial)
+summary(red2Mod)
+
+lrtest(red2Mod, red1Mod) #cat not sig
+
+red3Mod <- glmer(ID ~ Category + (1|Year) + (1|Hex), data = data_long, family = binomial)
+summary(red3Mod)
+
+lrtest(red3Mod, red1Mod) #month is sig
+
+```
+
+
+
+
+
+
+
