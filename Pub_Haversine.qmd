@@ -56,54 +56,7 @@ theme_set(theme_bw())
 #| label: Read_Data
 #| message: false
 #| warning: false
-joined_matrices_prev<-read.csv(here::here("Thesis_Projects","Publication", "Prev_Haversine.csv"))
-joined_matrices<-read.csv(here::here("Thesis_Projects","Publication", "Comp_Haversine.csv"))
-```
-
-###Prev Graphing
-```{r}
-#| label: Joining_matrices_prev
-#| message: false
-#| warning: false
-PrevRegressionDistvsDiff<-joined_matrices_prev %>% 
-  ggplot(aes(x=Distance,y=Absdiff))+
-  facet_wrap(~Month_f)+
-  geom_point(shape=21, fill="black")+
-  theme(axis.title = element_text(size=10),
-        axis.text = element_text(size = 10))+
-  scale_x_continuous(n.breaks = 10)+
-  scale_y_continuous(n.breaks = 10)+
-  theme(legend.position="none",
-    plot.title = element_text(size=22),
-        strip.text = element_text(size=18),
-        axis.title = element_text(size=22),
-        axis.text = element_text(size = 15))+
-  labs(x="Distance between Sites (km)", y=expression(paste("Absolute Difference Between Site ", italic(" Cx. pipiens"), " MIR")), title="")+
-  geom_smooth(method = "lm", color="red", se=FALSE) # for linear trendline
-
-PrevRegressionDistvsDiff  
-  
-```
-
-###Analysis
-```{r}
-#| label: Analysis
-#| message: false
-#| warning: false
-joined_matrices_prev2 <-joined_matrices_prev %>% 
-  rename(Difference=Absdiff)
-
-cor.test(joined_matrices_prev2$Distance, joined_matrices_prev2$Difference)
-
-j21_data_prev <- subset(joined_matrices_prev2, Quarter == "July 2021") #significant
-a21_data_prev <- subset(joined_matrices_prev2, Quarter == "August 2021")
-j22_data_prev <- subset(joined_matrices_prev2, Quarter == "July 2022")
-a22_data_prev <- subset(joined_matrices_prev2, Quarter == "August 2022") #significant
-
-cor.test(j21_data_prev$Distance, j21_data_prev$Difference)
-cor.test(a21_data_prev$Distance, a21_data_prev$Difference)
-cor.test(j22_data_prev$Distance, j22_data_prev$Difference)
-cor.test(a22_data_prev$Distance, a22_data_prev$Difference)
+joined_matrices<-read.csv(here::here("Publication", "Comp_Haversine.csv"))
 ```
 
 ### JoindiffMatrices

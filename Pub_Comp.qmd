@@ -79,7 +79,6 @@ FullFac_Aim1<-ggplot(data=RestID_Full,aes(Category_f,PropPip))+
   geom_jitter(data=RestID_Full, width= 0.3, aes(y=PropPip, 
                                               x=Category_f, fill=Category_f), color="black",shape=21, size=3)+
   theme_bw()+
-  # scale_x_discrete(limits = c("Equal","Higher","Lower"))+
   scale_fill_manual(values = c("#25CED1","#FF7F50", "#F8C537"))+
   scale_y_continuous(limits=c(40,101))+
   theme(legend.position ='none', axis.text=element_text(size=15),
@@ -169,7 +168,7 @@ RawCounts<-ASOAQ %>%
           Month=fct_relevel(Month,c("July","August")),
       Species = ifelse(Species == "", "Unknown", Species),
 TRAP.ID = fct_rev(factor(TRAP.ID))) %>% 
-  select(c(TRAP.ID,Month,Year,Species)) %>% 
+  dplyr::select(c(TRAP.ID,Month,Year,Species)) %>% 
    group_by(TRAP.ID,Month, Year, Species) %>%
   summarise(Count = n(), .groups = "drop") %>% 
   ggplot(aes(TRAP.ID,Count,fill=Species)) + 

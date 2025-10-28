@@ -252,7 +252,6 @@ IPS_Graph
 ###MLE_Categorized
 ```{r}
 IPS_Graph_Categorized<-IPS_Categorized %>% 
-  filter(CI=="bsc") %>% 
   mutate(Species = case_when(
     Species == "R" ~ "Cx. restuans", 
     Species == "P" ~ "Cx. pipiens"),
