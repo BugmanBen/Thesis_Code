@@ -32,13 +32,8 @@ CSV containing a row for every sample tested as part of our work to identify the
 | :--- | :---: | 
 | TRAP ID | site name |
 | Month |	month data |
-| Day |	day data |
 | Year | year data |
 | Abdomen Species ID | molecular species identification |
-| SampleName | individual sample name |
-
-NOTE: Asterisks following a sample name (e.g. 5.PR2.21*) indicate that this sample is the second in the dataset to have this naming scheme. The asterisk indicates that this is a different individual. It is an artifact of our naming convention and was not preserved beyond this dataset.
-
 
 BaseHexMap.csv
 -
