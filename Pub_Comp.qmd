@@ -1,0 +1,196 @@
+---
+title: " THESIS:: Aim 1: Tracking Community Composition in Chicago's Cryptic Culex "
+author: "Ben Burgunder"
+date: today
+date-format: "MMM D, YYYY"
+
+editor: source
+
+format:
+  html:
+    title-block-banner: true
+    toc: true
+    toc-depth: 6
+    toc-float: true
+    code-overflow: wrap
+    code-fold: true
+    theme: flatly
+
+fig-width: 8
+fig-height: 7
+---
+
+### Loading Packages
+
+```{r}
+#| label: load_packages and set theme
+#| message: false
+#| warning: false
+
+if (!require(pacman)) install.packages("pacman")
+pacman::p_load(ggplot2, lmtest, ggpubr, aod, forcats, flextable, lme4, magrittr,ggdark, lubridate,update = FALSE)
+
+theme_set(theme_bw())
+
+my_custom_theme <- function() {
+  theme(legend.key.size = unit(2, 'cm'), #change legend key size
+        legend.box.background = element_rect(color="white", size=2),
+        legend.key.height = unit(1.01, 'cm'), #change legend key height
+        legend.key.width = unit(0.8, 'cm'), #change legend key width
+        legend.title = element_text(size=20, face="bold"), #change legend title font size
+        legend.text = element_text(size=15),
+        plot.title = element_text(size=30),
+        axis.title = element_text(size=22),
+        axis.text = element_text(size = 18))
+  }
+```
+
+### Reading in Data
+
+```{r}
+#| label: Read_Data
+#| message: false
+#| warning: false
+RestID_Full<-read.csv(here::here("Publication","RestID_Full.csv"))
+ASOAQ<-read.csv(here::here("Publication","ALLSampleOrganization_All_Quarters.csv"))
+```
+
+### Wrangling DFs
+
+```{r}
+#| label: Wrangling Dataframes
+#| message: false
+#| warning: false
+my_y_title <- expression(paste("Proportion ",italic("Cx. pipiens ")))
+RestID_Full$Month_f = factor(RestID_Full$Month, levels=c('Jul','Aug'))
+RestID_Full$Category_f=factor(RestID_Full$Category.x, levels=c('Lower','Equal', 'Higher'))
+```
+
+### Graph Full Facets
+
+```{r}
+#| label: Graphing
+#| message: false
+#| warning: false
+my_y_title <- expression(paste(italic("Cx. pipiens "), "by Site Category (%)" ))
+FullFac_Aim1<-ggplot(data=RestID_Full,aes(Category_f,PropPip))+
+  facet_grid(Year ~ Month_f)+
+  geom_boxplot(data=RestID_Full, aes(y=PropPip,x=Category_f, fill=Category_f),color="black",outlier.shape=NA, alpha=0.2)+
+  geom_jitter(data=RestID_Full, width= 0.3, aes(y=PropPip, 
+                                              x=Category_f, fill=Category_f), color="black",shape=21, size=3)+
+  theme_bw()+
+  # scale_x_discrete(limits = c("Equal","Higher","Lower"))+
+  scale_fill_manual(values = c("#25CED1","#FF7F50", "#F8C537"))+
+  scale_y_continuous(limits=c(40,101))+
+  theme(legend.position ='none', axis.text=element_text(size=15),
+        axis.title=element_text(size=22), strip.text.x = element_text(size = 15), strip.text.y = element_text(size = 15))+
+  ylab(my_y_title) + xlab("Observed vs. Predicted Human WNv Cases")
+
+FullFac_Aim1
+```
+
+###MappingComposition
+```{r}
+library("ggmap")
+register_stadiamaps("53c28c44-18b7-483b-bb9a-ceab0cf2abe1")
+A2BaseMap_2=get_stadiamap(bbox = c(left = -88.21, bottom = 41.94, right = -87.79, top = 42.17), zoom = 12, maptype = c("stamen_terrain_lines"), labels="false")
+
+PropPipHexMap= ggmap(A2BaseMap_2)+
+  labs(x="Longitude",y="Latitude")+
+  geom_point(data=RestID_Full, aes(x=X, y=Y, shape=Category.x, fill=PropPip), color="black",inherit.aes = FALSE, size=7)+
+  facet_grid(Year ~ Month)+
+  scale_shape_manual(values = c("Equal" = 21,
+                                "Lower"=22,
+                                "Higher"=24))+
+    labs(shape="Category", fill="Percentage \nCx. pipiens")+
+      scale_fill_viridis_c(option = "inferno")
+  PropPipHexMap
+```
+
+#### Model Reduction Testing
+
+```{r}
+#| label: Clustered Binomial suggested by RLS
+#| message: false
+#| warning: false
+
+#Reshaping data
+data_long <- with(RestID_Full[,c(1:6)],data.frame(
+  Month=rep(Month,Num.Rest + Num.Pip),
+  Category=rep(Category.x, Num.Rest + Num.Pip),
+  Year=rep(Year, Num.Rest + Num.Pip),
+  ID=rep(rep(c("Num.Rest","Num.Pip"),nrow(RestID_Full)),c(rbind(Num.Rest,Num.Pip))),
+  Hex=rep(Trap.ID, Num.Rest + Num.Pip)))
+
+data_long$ID <- as.character(data_long$ID)
+data_long$ID <- ifelse(data_long$ID == "Num.Pip", 1, 0)
+
+#definition crossed random effects:a given factor (hex) appears in more than one level of the upper level factor (year).
+fullmodel2 <- glmer(ID ~ Category * Month + (1|Year) + (1|Hex), #specifying crossed (vs. nested) random effects
+                    data = data_long, family = binomial)
+summary(fullmodel2)
+#CALL IT A CLUSTERED BINOMIAL WHERE WE SPECIFIED RANDOM EFFECTS OF YEAR AND SITE
+
+red1Mod <-glmer(ID ~ Category + Month + (1|Year) + (1|Hex), data = data_long, family = binomial)
+summary(red1Mod)
+
+lrtest(red1Mod, fullmodel2) #interaction not sig
+
+red2Mod <-glmer(ID ~ Month + (1|Year) + (1|Hex), data = data_long, family = binomial)
+summary(red2Mod)
+
+lrtest(red2Mod, red1Mod) #cat not sig
+
+red3Mod <- glmer(ID ~ Category + (1|Year) + (1|Hex), data = data_long, family = binomial)
+summary(red3Mod)
+
+lrtest(red3Mod, red1Mod) #month is sig
+
+```
+
+
+###July Comparison
+```{r}
+data_longJ<-data_long %>% 
+  dplyr::filter(Month=="Jul") %>% 
+    dplyr::mutate(ID = as.numeric(ID))
+
+fullmodelJ <- glm(ID ~ 1 + Year,data = data_longJ, family = binomial)
+fullmodelJ2<-glm(ID ~ 1,data = data_longJ, family = binomial)
+lrtest(fullmodelJ2,fullmodelJ)
+```
+###Full Counts per Hex
+```{r}
+library(dplyr)
+
+RawCounts<-ASOAQ %>% 
+  rename("Species"="Abdomen.Species.ID") %>% 
+    mutate(Species = tolower(Species),
+          Month=fct_relevel(Month,c("July","August")),
+      Species = ifelse(Species == "", "Unknown", Species),
+TRAP.ID = fct_rev(factor(TRAP.ID))) %>% 
+  select(c(TRAP.ID,Month,Year,Species)) %>% 
+   group_by(TRAP.ID,Month, Year, Species) %>%
+  summarise(Count = n(), .groups = "drop") %>% 
+  ggplot(aes(TRAP.ID,Count,fill=Species)) + 
+  facet_grid(Year~Month)+
+  geom_bar(color = "black", stat="identity",position="stack")+
+  scale_fill_manual(
+    values = c("p" = "lightgoldenrod", "r" = "cadetblue2", "s" = "lightgreen", "Unknown" = "gray"),
+    labels = c(
+      p = expression(italic("Cx. pipiens")),
+      r = expression(italic("Cx. restuans")),
+      s = expression(italic("Cx. salinarius")),
+      Unknown = "Unknown"
+    )
+  ) +
+  coord_flip()+
+  labs(x="Sampling Site")+
+  my_custom_theme()
+  
+ RawCounts
+```
+
+
+
+

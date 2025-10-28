@@ -1,0 +1,287 @@
+---
+title: " Fixing 2yr MIR Calc "
+author: "Ben Burgunder"
+date: today
+date-format: "MMM D, YYYY"
+
+editor: source
+
+format:
+  html:
+    title-block-banner: true
+    toc: true
+    toc-depth: 6
+    toc-float: true
+    code-overflow: wrap
+    code-fold: true
+    theme: flatly
+    
+bibliography: grateful-refs.bib
+
+fig-width: 8
+fig-height: 7
+---
+
+### Loading Packages
+
+```{r}
+#| label: load_packages and set theme
+#| message: false
+#| warning: false
+
+if (!require(pacman)) install.packages("pacman")
+pacman::p_load(binGroup,
+               cowplot,
+               here, 
+               flextable,
+               ggrepel,
+               ggdark,
+               ggmap,
+               grateful,
+               lubridate,
+               fitdistrplus,
+               ggpubr,
+               magick,
+               magrittr,
+               mass,
+               flextable,
+               forcats,
+               patchwork,
+               scales,
+               tidyverse, 
+               usmap,
+               update = FALSE)
+
+theme_set(theme_bw())
+
+my_custom_theme <- function() {
+  theme(legend.key.size = unit(2, 'cm'), #change legend key size
+        legend.box.background = element_rect(color="white", size=2),
+        legend.key.height = unit(1.01, 'cm'), #change legend key height
+        legend.key.width = unit(0.8, 'cm'), #change legend key width
+        legend.title = element_text(size=20, face="bold"), #change legend title font size
+        legend.text = element_text(size=15),
+        plot.title = element_text(size=30),
+        strip.text = element_text(size=18),
+        axis.title = element_text(size=22),
+        axis.text = element_text(size = 18))
+  }
+```
+
+### Reading in Data
+
+```{r}
+#| label: Read_Data
+#| message: false
+#| warning: false
+MIRcalc_ALL<-read.csv(here::here("Publication", "MIRcalcAll.csv"))
+BaseHexMap<-read.csv(here::here("Publication", "BaseHexMap.csv"))
+MLEcalc_All<-read.csv(here::here("Publication", "Yearless_IPS.csv"))
+MIRcalc_ALL$Category_fac=factor(MIRcalc_ALL$Category, levels=c('Lower','Equal', 'Higher'))
+MIRcalc_ALL$Month_f=factor(MIRcalc_ALL$Month, levels=c('July','August'))
+IPS_Categorized<-read.csv(here::here("Publication", "Categorized_binGroup.csv"))
+
+```
+###Analysis
+### Species and Month Interaction Analysis
+```{r}
+#| label: Analysis
+#| message: false
+#| warning: false
+#Summary Info
+NumPosvsTotals<-MIRcalc_ALL %>% 
+  group_by(Species, Month_f) %>% 
+  dplyr::summarize(Positive_Pools=sum(Positive),Total_Pools=sum(TotalSamples),Mosquitoes=sum(summed_MQ)) %>% 
+  mutate(PropPools=Positive_Pools/Total_Pools) %>% 
+  rename('Month Collected'=Month_f,
+         'Positive Pools'=Positive_Pools,
+         'Total Pools'=Total_Pools)
+
+
+prev_model_1<-glmer(cbind(Positive, TotalSamples - Positive) ~ Species * Month + Category + (1 | Hex) + (1 | Year),
+               data = MIRcalc_ALL,
+               family = binomial)
+AIC(prev_model_1)
+summary(prev_model_1) #full model is good
+prev_model_2<-glmer(cbind(Positive, TotalSamples - Positive) ~ Species + Month + Category + (1 | Hex)+ (1 | Year),
+               data = MIRcalc_ALL,
+               family = binomial)
+AIC(prev_model_2)
+summary(prev_model_2)
+lrtest(prev_model_2,prev_model_1) #interaction was significant, AIC goes up w removal
+prev_model_3<-glmer(cbind(Positive, TotalSamples - Positive) ~ Species * Month + (1 | Hex)+ (1 | Year),
+               data = MIRcalc_ALL,
+               family = binomial)
+summary(prev_model_3)
+AIC(prev_model_3)  #model 3 has the lowest AIC btw 1-4
+lrtest(prev_model_3,prev_model_1) #category not significant, AIC goes down w removal
+```
+###Species and Category Interaction
+```{r}
+prev_model_4<-glmer(cbind(Positive, TotalSamples - Positive) ~ Species * Category + Month + (1 | Hex) + (1 | Year),
+               data = MIRcalc_ALL,
+               family = binomial)
+AIC(prev_model_4)
+summary(prev_model_4)
+prev_model_5<-glmer(cbind(Positive, TotalSamples - Positive) ~ Species  +Category + Month + (1 | Hex) + (1 | Year),
+               data = MIRcalc_ALL,
+               family = binomial)
+AIC(prev_model_5)
+summary(prev_model_5)
+lrtest(prev_model_5,prev_model_4)
+```
+###Graphing
+### MIR Categories
+```{r}
+  MIR_CatSp_ALL_Graph_2<-MIRcalc_ALL %>% mutate(Species = case_when(
+   Species == "R" ~ "Cx. restuans",
+   Species == "P" ~ "Cx. pipiens")) %>%  
+  ggplot(aes(
+    x = Species,
+    y = MIR,
+    fill = Category_fac)) +
+  facet_wrap(~Month_f)+
+  geom_boxplot(color = "black",
+               outlier.shape = NA,
+               alpha = 0.3) +
+  scale_fill_manual(values = c("#25CED1", "#FF7F50", "#F8C537")) +
+  geom_jitter(aes(fill = Category_fac), position = position_jitterdodge(jitter.width = 0.3, dodge.width = 0.75), size=3, shape=21,color="black") +
+  my_custom_theme()+
+  labs(fill="Category",x="Species", y="Minimum Infection Rate per 1000 Mosquitoes",title="")+
+  theme(axis.text.x = element_text(face = "italic"))+
+  coord_cartesian(ylim=c(0,200))
+MIR_CatSp_ALL_Graph_2
+```
+###Visual Representation of positivity
+```{r}
+library("ggmap")
+register_stadiamaps("53c28c44-18b7-483b-bb9a-ceab0cf2abe1")
+A2BaseMap_2=get_stadiamap(bbox = c(left = -88.21, bottom = 41.94, right = -87.79, top = 42.17), zoom = 12, maptype = c("stamen_terrain_lines"), labels="false")
+MappingTable1<- MIRcalc_ALL %>% 
+   group_by(Hex, Species,Month, Year) %>% 
+dplyr::summarise(total_positives = sum(Positive, na.rm = TRUE)) %>% 
+pivot_wider(
+    names_from = Species,  # Values from this column will become column names
+    values_from = total_positives # Values from this column will fill the new columns
+) %>% 
+    mutate(R = ifelse(is.na(R), 0, R),
+           P = ifelse(is.na(P), 0, P))
+RecodedMappingTable1<-MappingTable1 %>% 
+  mutate(
+    Scenario = case_when(
+      R > 0 & P > 0 ~ "Positive P and R",
+      R > 0 & P <= 0 ~ "Positive R",
+      R <= 0 & P > 0 ~ "Positive P",
+      R <= 0 & P <= 0 ~ "Negative")) %>% 
+  rename(Trap.ID=Hex)
+
+MErgedMappingDf<- left_join(RecodedMappingTable1,BaseHexMap,by="Trap.ID")
+MErgedMappingDf$Month_f=factor(MErgedMappingDf$Month, levels=c('July','August'))
+
+MIRPosHexMap= ggmap(A2BaseMap_2)+
+  labs(x="Longitude",y="Latitude")+
+  geom_point(data=MErgedMappingDf, aes(x=X, y=Y, fill=Scenario), size=7, shape=24,color="black")+
+  facet_wrap(~Month_f)+
+  facet_grid(Year~Month_f)+
+  scale_fill_manual(values = c("white","#ffe599ff", "#89bf37", "#9fc5e8ff")) +
+  my_custom_theme()+
+  labs(shape="Category", fill="Positivity", title = "")+
+  theme(axis.text = element_text(size=8),
+    axis.title = element_text(size=12))
+MIRPosHexMap
+```
+###Table Formatting
+```{r}
+Tabled_P_MIR_calc_All<-MIRcalc_ALL %>% 
+  filter(Species=="P") %>% 
+  mutate(
+    Month = fct_relevel(
+      Month,
+      c("July","August")),
+    Category=fct_relevel(Category,
+      c("Lower","Equal","Higher")
+    )
+  ) %>% 
+  dplyr::select(c(Month,Year,Category,Hex,MIR)) %>% 
+    mutate(Month_Year = paste(Month, Year, sep = "_")) %>% 
+  dplyr::select(-Month, -Year) %>%  # Drop the original Month and Year columns
+  pivot_wider(names_from = Month_Year, values_from = c(MIR))
+#Restuans
+Tabled_R_MIR_calc_All<-MIRcalc_ALL %>% 
+  filter(Species=="R") %>% 
+  mutate(
+    Month = fct_relevel(
+      Month,
+      c("July","August")),
+    Category=fct_relevel(Category,
+      c("Lower","Equal","Higher")
+    )
+  ) %>% 
+  dplyr::select(c(Month,Year,Category,Hex,MIR)) %>% 
+    mutate(Month_Year = paste(Month, Year, sep = "_")) %>% 
+  dplyr::select(-Month, -Year) %>%  # Drop the original Month and Year columns
+  pivot_wider(names_from = Month_Year, values_from = c(MIR))
+```
+###MLE
+```{r}
+IPS_Graph<-MLEcalc_All %>% 
+  filter(CI=="bsc") %>% 
+  mutate(Species = case_when(
+    Species == "R" ~ "Cx. restuans", 
+    Species == "P" ~ "Cx. pipiens"),
+    Month=case_when(
+    Month=="J"~"July",
+    Month=="A"~"August")) %>% 
+    mutate(Month = factor(Month, levels = month.name)) %>% 
+  ggplot(aes(
+    x = Species,
+    y = PointEst,
+    fill = Species,
+  )) +
+  facet_wrap(~Month)+
+  geom_bar(color = "black",alpha = 0.3, stat="identity") +
+  geom_errorbar(aes(ymin = Lower, ymax = Upper), width = 0.2, color = "black", linewidth = 1) +  # Confidence intervals
+  scale_fill_manual(values = c("lightgoldenrod", "cadetblue2")) +
+   scale_x_discrete(labels = expression(italic("Cx. pipiens"), italic("Cx. restuans"))) +
+   my_custom_theme()+
+  theme(legend.position = 'none',
+        plot.title = element_text(size=22))+
+  labs(fill="Category",x="Species", y="Infection Rate (MLE)", title="")
+IPS_Graph
+```
+###MLE_Categorized
+```{r}
+IPS_Graph_Categorized<-IPS_Categorized %>% 
+  filter(CI=="bsc") %>% 
+  mutate(Species = case_when(
+    Species == "R" ~ "Cx. restuans", 
+    Species == "P" ~ "Cx. pipiens"),
+    Month=case_when(
+    Month=="J"~"July",
+    Month=="A"~"August"),
+    Category=case_when(
+      Category=="L"~"Lower",
+      Category=="E"~"Equal",
+      Category=="H"~"Higher",
+    )) %>% 
+    mutate(Month = factor(Month, levels = month.name),
+           Category=factor(Category, levels=c("Lower","Equal","Higher"))) %>% 
+  ggplot(aes(
+    x = Species,
+    y = PointEst,
+    fill = Category,
+  )) +
+  facet_wrap(~Month)+
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), color="black",alpha=0.3) +  # Bars dodged
+  geom_errorbar(aes(ymin = Lower, ymax = Upper), 
+                position = position_dodge(width = 0.9),  # Error bars dodged
+                width = 0.25) +
+  
+  scale_fill_manual(values = c("#25CED1", "#FF7F50", "#F8C537")) +
+  scale_x_discrete(labels = expression(italic("Cx. pipiens"), italic("Cx. restuans"))) +
+   my_custom_theme()+
+  labs(fill="Category",x="Species", y="Infection Rate (MLE)", title=""
+       )
+IPS_Graph_Categorized
+```
+
